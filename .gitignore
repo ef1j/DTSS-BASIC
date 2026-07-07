@@ -1,0 +1,23 @@
+# Research archive — background material, not part of the deliverable
+# (scanned manuals and clippings may also carry third-party copyright)
+Ahl-BASIC-Games/
+Creative-Computing/
+Dartmouth BASIC programs/
+Dartmouth-BASIC-manuals/
+dhq-journal/
+Elgin-Lee-works/
+Indiana/
+LOVE-listings/
+MITS-BASIC/
+Spahn-bio/
+NOTES.txt
+
+# Local tool state
+.claude/settings.local.json
+
+# Python
+__pycache__/
+*.pyc
+build/
+dist/
+*.egg-info/

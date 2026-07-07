@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dbasic"
+version = "1.0.0"
+description = "An interpreter for Dartmouth BASIC, Fourth Edition (1968)"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+dependencies = []
+
+[project.scripts]
+dbasic = "dbasic:main"
+
+[tool.setuptools]
+py-modules = ["dbasic"]
