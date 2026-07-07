@@ -5,7 +5,8 @@ dbasic.py -- an interpreter for Dartmouth BASIC, Fourth Edition (1968).
 A modern reimplementation of the BASIC language documented in
 "BASIC, Fourth Edition" (Kemeny & Kurtz, Dartmouth College Computation
 Center, 1 January 1968).  This is a language reimplementation, not an
-emulation of the GE-235/DTSS hardware or operating system.
+emulation of the DTSS hardware (a GE-635 by the Fourth Edition era) or
+operating system.
 
 Usage:
     python3 dbasic.py PROGRAM          batch mode: run PROGRAM, output to stdout
@@ -112,6 +113,21 @@ def upcase_outside_quotes(s):
         else:
             out.append(ch if inq else ch.upper())
     return ''.join(out)
+
+
+def strip_remark(text):
+    """Cut an end-of-line ' remark (manual sec. 2.5), respecting quotes.
+
+    Not applied to DATA lines: the manual notes that on a line ending in
+    an unquoted string the apostrophe becomes part of the string.
+    """
+    inq = False
+    for i, ch in enumerate(text):
+        if ch == '"':
+            inq = not inq
+        elif ch == "'" and not inq:
+            return text[:i]
+    return text
 
 
 def split_csv(text):
@@ -470,6 +486,12 @@ def parse_statement(text, line):
     stripped = text.strip()
     if stripped.startswith('REM'):
         return ('REM',)
+    if stripped.startswith('DATA'):
+        # raw text: unquoted DATA strings may contain spaces and
+        # apostrophes (so no ' remark is possible here, per sec. 2.5)
+        idx = text.upper().index('DATA') + 4
+        return ('DATA', text[idx:])
+    text = strip_remark(text)
     toks = tokenize(text, line)
     if not toks:
         raise BasicError("ILLEGAL INSTRUCTION", line)
@@ -477,11 +499,6 @@ def parse_statement(text, line):
     k, v = p.next()
     if k != 'id':
         raise BasicError("ILLEGAL INSTRUCTION", line)
-
-    if v == 'DATA':
-        # taken from the raw text: unquoted strings may contain spaces
-        idx = text.upper().index('DATA') + 4
-        return ('DATA', text[idx:])
 
     if v == 'LET':
         lv = p.lvalue()
@@ -534,7 +551,8 @@ def parse_statement(text, line):
 
     if v == 'ON':
         ex = p.expression()
-        if not p.accept_id('GOTO'):
+        # "THEN may be used in an ON statement" (manual sec. 1.7.6)
+        if not p.accept_id('GOTO') and not p.accept_id('THEN'):
             p.expect_id('GO')
             p.expect_id('TO')
         targets = [p.expect_lineno()]
@@ -547,7 +565,11 @@ def parse_statement(text, line):
         e1 = p.expression()
         op = p.relop()
         e2 = p.expression()
-        p.expect_id('THEN')
+        # "IF X > 5 THEN 200 may also be written IF X > 5 GO TO 200"
+        # (manual sec. 1.7.6)
+        if not p.accept_id('THEN') and not p.accept_id('GOTO'):
+            p.expect_id('GO')
+            p.expect_id('TO')
         pk, pv = p.peek()
         if pk != 'num':
             raise BasicError(

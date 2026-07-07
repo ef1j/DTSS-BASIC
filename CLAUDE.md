@@ -85,8 +85,11 @@ Everything lives in `dbasic.py` (~1000 lines), deliberately one module:
   tested (T3).
 - Exactly one statement per line; `:` must be **rejected**, not supported.
 - Documented tolerances for period programs (see README DEVIATIONS): line
-  number 0, `RND(dummy-arg)`, PRINT item juxtaposition as implicit `;`.
-  FTBALL exercises all of these. `END` however is strict per the manual:
+  number 0 and `RND(dummy-arg)` — both used by FTBALL (1965, written under
+  an earlier BASIC edition). PRINT item juxtaposition is NOT a tolerance:
+  it's documented manual behavior (§1.7.3 type (c)), as are `IF … GO TO`,
+  `ON … THEN`, and end-of-line `'` remarks (§2.5, not on DATA lines).
+  `END` however is strict per the manual:
   present, unique, and the **last line** (`END IS NOT LAST` otherwise) —
   DTSS was a one-pass compiler, so trailing DATA after END is rejected;
   the bundled LOVE programs have END renumbered to 999 for this reason.

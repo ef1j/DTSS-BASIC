@@ -15,7 +15,8 @@ Python 3.8+, standard library only. No third-party dependencies.
 This is a **modern reimplementation of the Dartmouth BASIC Fourth Edition
 language, built from the 1968 manual**. It is *not* the original DTSS software
 (the 1968 compiler does not survive) and *not* an emulation of the DTSS
-operating system or the GE-235/DATANET-30 hardware. It is a tool for
+operating system or its hardware (a GE-635 with DATANET-30 front end by the
+Fourth Edition era; the GE-225/235 was the original 1964 machine). It is a tool for
 demonstrating that period-accurate programs run and produce the expected
 output under Fourth-Edition semantics; it is evidence of feasibility, not of
 what any historical author actually wrote.
@@ -117,7 +118,14 @@ Statements: `LET` (keyword required), `READ` / `DATA` / `RESTORE` (also
 `NEXT`, `DIM`, `DEF FNA`–`FNZ` (single-line with zero or more arguments, and
 multiple-line `DEF` … `FNEND` per §2.2, where `LET FNx = …` sets the return
 value and transfers may not cross the DEF boundary), `GOSUB` / `RETURN`,
-`INPUT`, `CHANGE`, `REM`, `RANDOMIZE` (`RANDOM`), `STOP`, `END`.
+`INPUT`, `CHANGE`, `REM`, `RANDOMIZE` (`RANDOM`), `STOP`, `END`. Two
+interchangeable spellings from §1.7.6: `IF … GO TO <line>` for `IF … THEN
+<line>`, and `ON … THEN` for `ON … GO TO`. Comments are `REM` lines or an
+end-of-line apostrophe remark (§2.5; on a line ending in an unquoted string,
+such as a `DATA` item, the apostrophe is part of the string — the manual's
+own caveat). In `PRINT`, a quoted label may be juxtaposed directly against
+an expression with no separator (`PRINT "THE VALUE OF X IS" X` — §1.7.3
+type (c)).
 
 The thirteen `MAT` instructions of §2.6 are implemented: `MAT READ` (with
 redimensioning, e.g. `MAT READ A(M,N)`), `MAT PRINT` (`;` packed, `,` zones;
@@ -159,9 +167,23 @@ Every intentional departure from the 1968 manual, and why:
 2. **`RND` accepts and ignores a dummy argument** (`RND(X)`). The manual's
    `RND` takes no argument, but the `RND(X)` idiom appears in period programs
    (FTBALL); the argument is parsed and discarded, never evaluated.
-3. **Adjacent PRINT items without a separator are packed as if separated by
-   `;`** (e.g. `PRINT "GAIN OF " Y "YARDS"`, used throughout FTBALL). The
-   manual asks for `,` or `;` between items.
+   (Deviations 1–2 are tolerances for programs written under *earlier*
+   editions of Dartmouth BASIC: FTBALL dates from 1965, before the Fourth
+   Edition, when `RND`'s calling convention differed.)
+3. **Machine capacity is not emulated.** The GE-635's limits and their
+   errors are intentionally absent: the nine-digit constant limit
+   (`ILLEGAL CONSTANT` fires here only above 1.70141E+38), `OUT OF ROOM`,
+   `DIMENSION TOO LARGE`, `CUT PROGRAM OR DIMS`, `EXPRESSION TOO
+   COMPLICATED`, `TOO MANY CONSTANTS`, the §2.9 space rule
+   (C/4 + M + S < 8000), the 100-constant quota, the 60-character default
+   string reservation, and the `USELESS LOOP` / `TIME UP` watchdogs.
+   Programs and data are bounded only by the host machine, so a program
+   that runs here might have exceeded capacity on real DTSS — anyone
+   moving beyond validating program *output* toward validating historical
+   *feasibility* (would this have fit and run in 1968?) must check §2.9's
+   limits separately. (Note: `PRINT` label–expression juxtaposition,
+   formerly listed here as a deviation, is in fact documented manual
+   behavior — §1.7.3 type (c).)
 4. **`END` rules are enforced as the manual specifies** — `END` must be
    present (`NO END INSTRUCTION`), unique, and the last line of the program
    (`END IS NOT LAST`, §2.8). DTSS was a one-pass *compiler*, for which

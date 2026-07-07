@@ -448,6 +448,49 @@ class T3Syntax(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, '')
 
+    def test_apostrophe_remark(self):
+        # manual sec. 2.5: ' at end of line begins a remark
+        src = "10 LET A = 5 'SET A TO FIVE\n20 PRINT A 'AND PRINT IT\n30 END\n"
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 5 \n')
+
+    def test_apostrophe_kept_in_data_and_quotes(self):
+        # the manual's caveat: in an unquoted string the apostrophe is
+        # part of the string, so DATA lines keep it
+        src = ("10 READ A$\n20 PRINT A$;\"N'T\"\n"
+               "30 DATA DO\n40 END\n")
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, "DON'T\n")
+        src = "10 READ A$\n20 PRINT A$\n30 DATA CAN'T\n40 END\n"
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, "CAN'T\n")
+
+    def test_if_go_to_form(self):
+        # manual sec. 1.7.6: IF X > 5 GO TO 200 == IF X > 5 THEN 200
+        src = ('10 LET X = 9\n20 IF X > 5 GO TO 40\n'
+               '30 PRINT "NO"\n40 END\n')
+        out, _, rc = run_src(src)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, '')
+
+    def test_on_then_form(self):
+        # manual sec. 1.7.6: THEN may be used in an ON statement
+        src = ('10 ON 2 THEN 20, 40\n20 PRINT "ONE"\n'
+               '30 GO TO 50\n40 PRINT "TWO"\n50 END\n')
+        out, _, rc = run_src(src)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, 'TWO\n')
+
+    def test_print_juxtaposition_documented_form(self):
+        # manual sec. 1.7.3 type (c): PRINT "THE VALUE OF X IS" X
+        src = ('10 LET X = 3\n20 PRINT "THE VALUE OF X IS" X\n30 END\n')
+        out, _, rc = run_src(src)
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, 'THE VALUE OF X IS 3 \n')
+
     def test_not_equal_hash_form(self):
         src = ('10 LET A = 1\n20 IF A # 2 THEN 40\n'
                '30 PRINT "EQ"\n40 END\n')
