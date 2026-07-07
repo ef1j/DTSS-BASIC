@@ -7,9 +7,10 @@ a maintained-in-parallel fork of dbasic.py (the primary, Python 3
 version) with small compatibility shims so it runs under Python 2.7 on
 machines without python3.  It also runs unmodified under Python 3 and
 must always produce byte-identical output to dbasic.py (the test suite
-checks this: tests/test_dbasic.py, Python2Compat).
+checks this: tests/test_dbasic.py, Python2Fork).
 
-When changing dbasic.py, mirror the change here.
+This file is generated from dbasic.py by a mechanical transform; edit
+dbasic.py and regenerate (or mirror the change by hand).
 
 Usage:
     python2 dbasic2.py PROGRAM         batch mode: run PROGRAM, output to stdout
@@ -23,6 +24,7 @@ the 1968 manual) and a provenance note.
 """
 
 from __future__ import division, print_function
+
 
 import math
 import os
@@ -48,11 +50,12 @@ def _time_seed():
         return int(time.time() * 1e9)
 
 
-def iround(v):
-    """Round half away from zero, identically on Python 2 and 3.
 
-    (Python 3's round() is banker's rounding, Python 2's is not; array
-    subscripts must not depend on the host Python's tie-breaking.)
+def iround(v):
+    """Round half away from zero.
+
+    round() would be banker's rounding; an explicit rule keeps array
+    subscripts deterministic and identical to dbasic.py.
     """
     return int(math.floor(v + 0.5))
 
@@ -309,6 +312,10 @@ class Parser:
                         args.append(self.expression())
                     self.expect_op(')')
             return ('call', v, args)
+        if v == 'NUM':          # components entered by the last MAT INPUT
+            return ('numfn',)
+        if v == 'DET':          # determinant from the last MAT ... = INV( )
+            return ('detfn',)
         return self.variable_ref(v)
 
     def variable_ref(self, v):
@@ -332,6 +339,9 @@ class Parser:
         k, v = self.next()
         if k != 'id':
             raise BasicError("ILLEGAL VARIABLE", self.line)
+        if FN_RE.match(v):
+            # LET FNM = ... : the temporary value of a multiple-line DEF
+            return ('fnvar', v)
         node = self.variable_ref(v)
         if node[0] in ('var', 'el', 'svar', 'sel'):
             return node
@@ -378,6 +388,105 @@ def parse_data_items(text, line):
             else:
                 raise BasicError("ILLEGAL CONSTANT '%s' IN DATA" % s, line)
     return items
+
+
+def _mat_name(p, line, strings_ok=False):
+    nk, nv = p.next()
+    if nk == 'id' and NUMVAR_RE.match(nv):
+        return nv
+    if strings_ok and nk == 'id' and STRVAR_RE.match(nv):
+        return nv
+    raise BasicError("ILLEGAL VARIABLE IN MAT", line)
+
+
+def parse_mat(p, line):
+    """The thirteen MAT instructions of manual sec. 2.6 (and their
+    string-vector forms from sec. 2.7)."""
+    k, v = p.next()
+    if k != 'id':
+        raise BasicError("ILLEGAL FORMAT IN MAT", line)
+
+    if v == 'READ':
+        items = []
+        while True:
+            name = _mat_name(p, line, strings_ok=True)
+            dims = None
+            if p.accept_op('('):
+                dims = [p.expression()]
+                if p.accept_op(','):
+                    if name.endswith('$'):
+                        raise BasicError(
+                            "NO STRING MATRICES (ONE SUBSCRIPT ONLY)", line)
+                    dims.append(p.expression())
+                p.expect_op(')')
+            items.append((name, dims))
+            if not p.accept_op(','):
+                break
+        p.end_of_statement()
+        return ('MATREAD', items)
+
+    if v == 'PRINT':
+        # the separator AFTER each matrix selects its format:
+        # ';' packed, ',' zones; absent: zones (column format for vectors)
+        items = []
+        while True:
+            name = _mat_name(p, line, strings_ok=True)
+            sep = p.accept_op(',', ';')
+            fmt = 'packed' if sep == ';' else 'zone' if sep == ',' else 'plain'
+            items.append((name, fmt))
+            if sep is None or p.at_end():
+                break
+        p.end_of_statement()
+        return ('MATPRINT', items)
+
+    if v == 'INPUT':
+        name = _mat_name(p, line, strings_ok=True)
+        p.end_of_statement()
+        return ('MATINPUT', name)
+
+    # MAT <target> = <rhs>
+    if not NUMVAR_RE.match(v):
+        raise BasicError("ILLEGAL VARIABLE IN MAT", line)
+    target = v
+    p.expect_op('=')
+    pk, pv = p.peek()
+    if pk == 'op' and pv == '(':
+        # MAT C = (K) * A : scalar multiplication
+        p.next()
+        ex = p.expression()
+        p.expect_op(')')
+        p.expect_op('*')
+        rhs = ('scal', ex, _mat_name(p, line))
+    elif pk == 'id':
+        p.next()
+        if pv in ('ZER', 'CON', 'IDN'):
+            dims = None
+            if p.accept_op('('):
+                dims = [p.expression()]
+                if p.accept_op(','):
+                    dims.append(p.expression())
+                p.expect_op(')')
+            rhs = ('fill', pv, dims)
+        elif pv in ('TRN', 'INV'):
+            p.expect_op('(')
+            name = _mat_name(p, line)
+            p.expect_op(')')
+            rhs = ('trn' if pv == 'TRN' else 'inv', name)
+        elif NUMVAR_RE.match(pv):
+            if p.accept_op('+'):
+                rhs = ('add', pv, _mat_name(p, line))
+            elif p.accept_op('-'):
+                rhs = ('sub', pv, _mat_name(p, line))
+            elif p.accept_op('*'):
+                rhs = ('mul', pv, _mat_name(p, line))
+            else:
+                rhs = ('copy', pv)
+        else:
+            raise BasicError("ILLEGAL MAT FUNCTION", line)
+    else:
+        raise BasicError("ILLEGAL FORMAT IN MAT", line)
+    p.end_of_statement()
+    return ('MATASSIGN', target, rhs)
 
 
 def parse_statement(text, line):
@@ -528,11 +637,17 @@ def parse_statement(text, line):
                 if not p.accept_op(','):
                     break
             p.expect_op(')')
-        if not p.accept_op('='):
-            raise BasicError("MULTIPLE-LINE DEF IS NOT SUPPORTED", line)
-        ex = p.expression()
+        if p.accept_op('='):
+            ex = p.expression()
+            p.end_of_statement()
+            return ('DEF', fv, params, ex)
+        # no '=': a multiple-line DEF, terminated by FNEND (manual sec. 2.2)
         p.end_of_statement()
-        return ('DEF', fv, params, ex)
+        return ('DEFML', fv, params)
+
+    if v == 'FNEND':
+        p.end_of_statement()
+        return ('FNEND',)
 
     if v == 'GOSUB':
         n = p.expect_lineno()
@@ -583,7 +698,7 @@ def parse_statement(text, line):
         return ('RANDOMIZE',)
 
     if v == 'MAT':
-        raise BasicError("MAT STATEMENTS ARE NOT IMPLEMENTED (SEE README)", line)
+        return parse_mat(p, line)
 
     raise BasicError("ILLEGAL INSTRUCTION '%s'" % v, line)
 
@@ -611,14 +726,44 @@ class Program:
                 for typ, val in parse_data_items(s[1], n):
                     (self.data_num if typ == 'N' else self.data_str).append(val)
 
-        # DEF registration (a DEF may occur anywhere, sec. 2.2)
+        # DEF registration (a DEF may occur anywhere, sec. 2.2), including
+        # multiple-line DEF ... FNEND bodies.  region maps each line to the
+        # enclosing multiple-line DEF (or None): transfers may not cross a
+        # DEF boundary in either direction.
         self.fns = {}
+        self.fnend_of = {}
+        self.region = {}
+        open_def = None
         for n in self.order:
             s = self.stmts[n]
             if s[0] == 'DEF':
                 if s[1] in self.fns:
                     raise BasicError("FUNCTION %s DEFINED TWICE" % s[1], n)
-                self.fns[s[1]] = (s[2], s[3], n)
+                self.fns[s[1]] = {'ml': False, 'params': s[2],
+                                  'expr': s[3], 'line': n}
+            elif s[0] == 'DEFML':
+                if open_def is not None:
+                    raise BasicError("NESTED DEF", n)
+                if s[1] in self.fns:
+                    raise BasicError("FUNCTION %s DEFINED TWICE" % s[1], n)
+                open_def = (s[1], s[2], n)
+                # the DEF line itself is "outside": jumping to it from
+                # outside simply skips over the body
+                self.region[n] = None
+                continue
+            elif s[0] == 'FNEND':
+                if open_def is None:
+                    raise BasicError("FNEND WITHOUT DEF", n)
+                name, params, start = open_def
+                self.fns[name] = {'ml': True, 'params': params,
+                                  'start': start, 'end': n}
+                self.fnend_of[start] = n
+                self.region[n] = name
+                open_def = None
+                continue
+            self.region[n] = open_def[0] if open_def else None
+        if open_def is not None:
+            raise BasicError("UNFINISHED DEF", open_def[2])
 
         # DIM declarations (position-independent; the program is compiled)
         self.dims, self.sdims = {}, {}
@@ -632,6 +777,7 @@ class Program:
                     table[name] = dims
 
         # Static FOR/NEXT pairing; loops must be properly nested (sec. 1.7.7)
+        # and may not straddle a multiple-line DEF boundary.
         self.next_of = {}
         stack = []
         for n in self.order:
@@ -643,10 +789,18 @@ class Program:
                     raise BasicError("NEXT WITHOUT FOR", n)
                 _, fline = stack.pop()
                 self.next_of[fline] = n
+            elif s[0] == 'DEFML':
+                stack.append(('<DEF>', n))
+            elif s[0] == 'FNEND':
+                if stack and stack[-1][0] != '<DEF>':
+                    raise BasicError("FOR WITHOUT NEXT", stack[-1][1])
+                if stack:
+                    stack.pop()
         if stack:
             raise BasicError("FOR WITHOUT NEXT", stack[-1][1])
 
-        # All referenced line numbers must exist
+        # All referenced line numbers must exist, and no transfer may cross
+        # into or out of a multiple-line DEF (manual sec. 2.2)
         for n in self.order:
             s = self.stmts[n]
             targets = ()
@@ -659,6 +813,8 @@ class Program:
             for t in targets:
                 if t not in self.index:
                     raise BasicError("UNDEFINED LINE NUMBER %s" % t, n)
+                if self.region.get(n) != self.region.get(t):
+                    raise BasicError("TRANSFER INTO OR OUT OF DEF", n)
 
         # END marks the end of the source to the (one-pass) compiler: it
         # must exist, be unique, and be the last line (manual sec. 2.8).
@@ -728,6 +884,40 @@ def fmt_mag(a):
 def fmt_number(x):
     """Full printed form: sign (or leading space) + magnitude + one space."""
     return ('-' if x < 0 else ' ') + fmt_mag(abs(x)) + ' '
+
+
+def _invert(m, n):
+    """Invert the n-by-n matrix m (a list of lists, destroyed) by
+    Gauss-Jordan elimination with partial pivoting.
+
+    Returns (inverse, determinant); (None, 0.0) if singular -- inverting
+    a singular matrix must not stop the program (manual sec. 2.6).
+    """
+    inv = [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    det = 1.0
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(m[r][col]))
+        if abs(m[pivot][col]) < 1e-300:
+            return None, 0.0
+        if pivot != col:
+            m[col], m[pivot] = m[pivot], m[col]
+            inv[col], inv[pivot] = inv[pivot], inv[col]
+            det = -det
+        p = m[col][col]
+        det *= p
+        for j in range(n):
+            m[col][j] /= p
+            inv[col][j] /= p
+        for r in range(n):
+            if r == col:
+                continue
+            factor = m[r][col]
+            if factor == 0.0:
+                continue
+            for j in range(n):
+                m[r][j] -= factor * m[col][j]
+                inv[r][j] -= factor * inv[col][j]
+    return inv, det
 
 
 # ----------------------------------------------------------------------------
@@ -811,6 +1001,8 @@ class Interp:
         self.gosub_stack = []
         self.nptr = 0           # numeric DATA pointer
         self.sptr = 0           # string DATA pointer
+        self.num_val = 0.0      # NUM: components from the last MAT INPUT
+        self.det_val = 0.0      # DET: determinant from the last INV
         self.rng = Rand()       # reseeded identically on every RUN
         for name, dims in prog.dims.items():
             self.arrays[name] = self._new_array(dims, 0.0)
@@ -819,10 +1011,16 @@ class Interp:
 
     @staticmethod
     def _new_array(dims, fill):
+        # 'decl' is the declared (capacity) bound per axis -- from DIM or
+        # the automatic 10 -- and never changes; 'cur' is the current
+        # logical dimension, which MAT instructions may change (sec. 2.6).
+        # The buffer is allocated at full capacity once: redimensioning
+        # only changes 'cur' (and hence the row stride), which reproduces
+        # the manual's element-relocation behavior.
         size = dims[0] + 1
         if len(dims) == 2:
             size *= dims[1] + 1
-        return {'dims': dims, 'data': [fill] * size}
+        return {'decl': dims, 'cur': tuple(dims), 'data': [fill] * size}
 
     # --- variables and arrays ------------------------------------------
 
@@ -833,22 +1031,26 @@ class Interp:
             dims = (AUTO_BOUND,) * nsubs
             arr = self._new_array(dims, '' if string else 0.0)
             table[name] = arr
-        if len(arr['dims']) != nsubs:
+        if len(arr['decl']) != nsubs:
             raise BasicError("INCORRECT NUMBER OF SUBSCRIPTS FOR '%s'" % name, line)
         return arr
 
     def _flat(self, arr, idx_vals, line):
-        dims = arr['dims']
+        # bounds are checked against the current dimensions: identical to
+        # the declared bounds until a MAT instruction redimensions the
+        # array (which may legally make an axis larger than its DIM bound,
+        # within total capacity -- manual sec. 2.6 ZER(25,5) example)
+        cur = arr['cur']
         ints = []
         for v in idx_vals:
             i = iround(v)
             ints.append(i)
-        for i, bound in zip(ints, dims):
+        for i, bound in zip(ints, cur):
             if i < 0 or i > bound:
                 raise BasicError("SUBSCRIPT ERROR", line)
-        if len(dims) == 1:
+        if len(cur) == 1:
             return ints[0]
-        return ints[0] * (dims[1] + 1) + ints[1]
+        return ints[0] * (cur[1] + 1) + ints[1]
 
     # --- runtime warnings (manual sec. 2.8) -------------------------------
     # Several arithmetic conditions are warnings, not errors: the machine
@@ -910,6 +1112,10 @@ class Interp:
             return self.rng.next()
         if op == 'call':
             return self.call_fn(ast[1], ast[2], line)
+        if op == 'numfn':
+            return self.num_val
+        if op == 'detfn':
+            return self.det_val
         if op == 'tab':
             raise BasicError("TAB IS ONLY ALLOWED IN PRINT", line)
         raise BasicError("ILLEGAL FORMULA", line)
@@ -999,19 +1205,61 @@ class Interp:
         raise BasicError("UNDEFINED FUNCTION %s" % name, line)
 
     def call_fn(self, name, arg_asts, line):
+        # inside a multiple-line DEF the bare function name (no argument
+        # list) denotes the temporary return value, not a recursive call
+        if not arg_asts:
+            for scope in reversed(self.locals):
+                if name in scope:
+                    return scope[name]
         if name not in self.prog.fns:
             raise BasicError("UNDEFINED FUNCTION %s" % name, line)
-        params, body, defline = self.prog.fns[name]
+        fn = self.prog.fns[name]
+        params = fn['params']
         if len(arg_asts) != len(params):
             raise BasicError("INCORRECT NUMBER OF ARGUMENTS FOR %s" % name, line)
         if len(self.locals) > 50:
             raise BasicError("FUNCTIONS NESTED TOO DEEPLY", line)
         args = [self.eval_num(a, line) for a in arg_asts]
+        if fn['ml']:
+            return self.call_multiline(name, fn, args)
         self.locals.append(dict(zip(params, args)))
         try:
-            return self.eval_num(body, defline)
+            return self.eval_num(fn['expr'], fn['line'])
         finally:
             self.locals.pop()
+
+    def call_multiline(self, name, fn, args):
+        """Execute the body of a DEF ... FNEND function (manual sec. 2.2).
+
+        The bare function name acts as a temporary variable holding the
+        return value; all other non-parameter variables are global.
+        """
+        scope = dict(zip(fn['params'], args))
+        scope[name] = 0.0
+        self.locals.append(scope)
+        for_depth = len(self.for_stack)
+        gosub_depth = len(self.gosub_stack)
+        end = fn['end']
+        i = self.prog.index[fn['start']] + 1
+        try:
+            while True:
+                ln = self.prog.order[i]
+                if ln == end:
+                    break
+                r = self.exec_stmt(self.prog.stmts[ln], ln)
+                if r is None:
+                    i += 1
+                elif r[1] == end:
+                    break
+                elif r[0] == 'goto':
+                    i = self.prog.index[r[1]]
+                else:   # 'after'
+                    i = self.prog.index[r[1]] + 1
+            return scope[name]
+        finally:
+            self.locals.pop()
+            del self.for_stack[for_depth:]
+            del self.gosub_stack[gosub_depth:]
 
     def compare(self, op, l, r, line):
         a = self.eval(l, line)
@@ -1060,6 +1308,15 @@ class Interp:
             arr = self.get_array(lv[1], 1, line, string=True)
             idx = [self.eval_num(lv[2], line)]
             arr['data'][self._flat(arr, idx, line)] = value
+        elif kind == 'fnvar':
+            # LET FNM = ... : only meaningful while FNM is executing
+            if isinstance(value, str):
+                raise BasicError("MISMATCHED STRING OPERATION", line)
+            for scope in reversed(self.locals):
+                if lv[1] in scope:
+                    scope[lv[1]] = value
+                    return
+            raise BasicError("%s ASSIGNED OUTSIDE ITS DEF" % lv[1], line)
         else:
             raise BasicError("ILLEGAL VARIABLE", line)
 
@@ -1135,6 +1392,19 @@ class Interp:
         if op == 'RANDOMIZE':
             self.rng.randomize()
             return None
+        if op == 'DEFML':
+            # a multiple-line DEF body executes only when called
+            return ('after', self.prog.fnend_of[line])
+        if op == 'FNEND':
+            raise BasicError("FNEND OUTSIDE OF FUNCTION CALL", line)
+        if op == 'MATREAD':
+            return self.do_mat_read(s[1], line)
+        if op == 'MATPRINT':
+            return self.do_mat_print(s[1], line)
+        if op == 'MATINPUT':
+            return self.do_mat_input(s[1], line)
+        if op == 'MATASSIGN':
+            return self.do_mat_assign(s[1], s[2], line)
         if op in ('REM', 'DATA', 'DIM', 'DEF'):
             return None
         raise BasicError("ILLEGAL INSTRUCTION", line)
@@ -1255,7 +1525,7 @@ class Interp:
     def do_change_sn(self, svname, arrname, line):
         s = self.svars.get(svname, '')
         arr = self.get_array(arrname, 1, line)
-        if len(s) > arr['dims'][0]:
+        if len(s) > arr['decl'][0]:
             raise BasicError("SUBSCRIPT ERROR (STRING TOO LONG)", line)
         arr['data'][0] = float(len(s))
         for i, ch in enumerate(s):
@@ -1268,7 +1538,7 @@ class Interp:
     def do_change_ns(self, arrname, svname, line):
         arr = self.get_array(arrname, 1, line)
         n = iround(arr['data'][0])
-        if n < 0 or n > arr['dims'][0]:
+        if n < 0 or n > arr['decl'][0]:
             raise BasicError("SUBSCRIPT ERROR IN CHANGE", line)
         chars = []
         for i in range(1, n + 1):
@@ -1278,6 +1548,317 @@ class Interp:
             chars.append(chr(code))
         self.svars[svname] = ''.join(chars)
         return None
+
+    # --- MAT statements (manual sec. 2.6, strings sec. 2.7) ----------------
+    # Every vector has a component 0 and every matrix a row 0 and column 0,
+    # but the MAT instructions ignore them; they do count toward the
+    # capacity set by DIM.
+
+    def _mat_array(self, name, line, nsubs=None):
+        """Fetch (auto-creating) an array for a MAT instruction."""
+        string = name.endswith('$')
+        table = self.sarrays if string else self.arrays
+        if name not in table and nsubs is None:
+            # unseen name, shape unspecified: vectors for strings,
+            # 10-by-10 matrices for numerics (sec. 2.6)
+            nsubs = 1 if string else 2
+        if nsubs is None:
+            nsubs = len(table[name]['decl'])
+        return self.get_array(name, nsubs, line, string=string)
+
+    def _mat_redim(self, arr, dims, line):
+        if len(dims) != len(arr['decl']):
+            raise BasicError("DIMENSION ERROR", line)
+        need = 1
+        for d in dims:
+            if d < 1:
+                raise BasicError("DIMENSION ERROR", line)
+            need *= d + 1
+        # the zero rows/columns count toward the capacity limit
+        if need > len(arr['data']):
+            raise BasicError("DIMENSION ERROR", line)
+        arr['cur'] = tuple(dims)
+
+    def _eval_dims(self, dim_exprs, line):
+        return [iround(self.eval_num(e, line)) for e in dim_exprs]
+
+    def _mget(self, arr, i, j=None):
+        if j is None:
+            return arr['data'][i]
+        return arr['data'][i * (arr['cur'][1] + 1) + j]
+
+    def _mset(self, arr, i, j, v):
+        if j is None:
+            arr['data'][i] = v
+        else:
+            arr['data'][i * (arr['cur'][1] + 1) + j] = v
+
+    def do_mat_read(self, items, line):
+        for name, dim_exprs in items:
+            string = name.endswith('$')
+            if dim_exprs:
+                arr = self._mat_array(name, line, nsubs=len(dim_exprs))
+                self._mat_redim(arr, self._eval_dims(dim_exprs, line), line)
+            else:
+                arr = self._mat_array(name, line)
+            cur = arr['cur']
+            if len(cur) == 1:
+                spots = [(i, None) for i in range(1, cur[0] + 1)]
+            else:
+                spots = [(i, j) for i in range(1, cur[0] + 1)
+                         for j in range(1, cur[1] + 1)]
+            for i, j in spots:
+                if string:
+                    if self.sptr >= len(self.prog.data_str):
+                        raise BasicError("OUT OF DATA", line)
+                    self._mset(arr, i, j, self.prog.data_str[self.sptr])
+                    self.sptr += 1
+                else:
+                    if self.nptr >= len(self.prog.data_num):
+                        raise BasicError("OUT OF DATA", line)
+                    self._mset(arr, i, j, self.prog.data_num[self.nptr])
+                    self.nptr += 1
+        return None
+
+    def _mat_item(self, v):
+        if isinstance(v, str):
+            self.printer.write_item(v)
+        else:
+            self.printer.write_item(fmt_number(v))
+
+    def do_mat_print(self, items, line):
+        pr = self.printer
+        for name, fmt in items:
+            arr = self._mat_array(name, line)
+            cur = arr['cur']
+            if pr.col > 0:
+                pr.newline()
+            if len(cur) == 1 and fmt == 'plain':
+                # a vector prints as a column vector (sec. 2.6)
+                for i in range(1, cur[0] + 1):
+                    self._mat_item(self._mget(arr, i))
+                    pr.newline()
+                continue
+            # rows of a matrix; a vector with ',' or ';' is one row
+            nrows = 1 if len(cur) == 1 else cur[0]
+            ncols = cur[0] if len(cur) == 1 else cur[1]
+            for r in range(1, nrows + 1):
+                for c in range(1, ncols + 1):
+                    if len(cur) == 1:
+                        self._mat_item(self._mget(arr, c))
+                    else:
+                        self._mat_item(self._mget(arr, r, c))
+                    if fmt != 'packed' and c < ncols:
+                        pr.zone_advance()
+                pr.newline()
+        return None
+
+    def do_mat_input(self, name, line):
+        string = name.endswith('$')
+        arr = self._mat_array(name, line, nsubs=1)   # always a vector
+        if len(arr['decl']) != 1:
+            raise BasicError("DIMENSION ERROR", line)
+        while True:
+            vals = []
+            more = True
+            while more:
+                self.printer.emit('? ')
+                self.printer.flush()
+                raw = self.stdin.readline()
+                if raw == '':
+                    raise BasicError("END OF INPUT", line)
+                raw = raw.rstrip('\n').rstrip('\r').rstrip()
+                self.printer.col = 0
+                if not self.interactive and not self.stdin.isatty():
+                    self.printer.out.write('\n')
+                # a trailing & asks for more input on the next line
+                more = raw.endswith('&')
+                if more:
+                    raw = raw[:-1]
+                if raw.strip():
+                    for item in split_csv(raw):
+                        item = item.strip()
+                        if (item.startswith('"') and item.endswith('"')
+                                and len(item) >= 2):
+                            vals.append(('S', item[1:-1]))
+                        else:
+                            vals.append(('U', item))
+            if len(vals) > arr['decl'][0]:
+                raise BasicError("DIMENSION ERROR", line)
+            try:
+                converted = []
+                for typ, item in vals:
+                    if string:
+                        converted.append(item)
+                    else:
+                        if typ == 'S':
+                            raise BasicError(
+                                "INPUT DATA NOT IN CORRECT FORMAT", line)
+                        try:
+                            converted.append(float(item))
+                        except ValueError:
+                            raise BasicError(
+                                "INPUT DATA NOT IN CORRECT FORMAT", line)
+            except BasicError:
+                if self.interactive:
+                    self.printer.emit(
+                        'INPUT DATA NOT IN CORRECT FORMAT -- RETYPE IT')
+                    self.printer.newline()
+                    continue
+                raise
+            self.num_val = float(len(converted))
+            if converted:
+                arr['cur'] = (len(converted),)
+                for i, v in enumerate(converted, start=1):
+                    self._mset(arr, i, None, v)
+            return None
+
+    def _mat_as_2d(self, arr):
+        """Shape for multiplication: a vector is a column vector (n,1)."""
+        cur = arr['cur']
+        if len(cur) == 1:
+            return cur[0], 1
+        return cur
+
+    def do_mat_assign(self, target, rhs, line):
+        kind = rhs[0]
+
+        if kind == 'fill':                      # ZER, CON, IDN
+            fname, dim_exprs = rhs[1], rhs[2]
+            if dim_exprs:
+                arr = self._mat_array(target, line, nsubs=len(dim_exprs))
+                self._mat_redim(arr, self._eval_dims(dim_exprs, line), line)
+            else:
+                arr = self._mat_array(target, line)
+            cur = arr['cur']
+            if fname == 'IDN':
+                if len(cur) != 2 or cur[0] != cur[1]:
+                    raise BasicError("DIMENSION ERROR", line)
+                for i in range(1, cur[0] + 1):
+                    for j in range(1, cur[1] + 1):
+                        self._mset(arr, i, j, 1.0 if i == j else 0.0)
+                return None
+            v = 0.0 if fname == 'ZER' else 1.0
+            if len(cur) == 1:
+                for i in range(1, cur[0] + 1):
+                    self._mset(arr, i, None, v)
+            else:
+                for i in range(1, cur[0] + 1):
+                    for j in range(1, cur[1] + 1):
+                        self._mset(arr, i, j, v)
+            return None
+
+        if kind == 'copy':
+            src = self._mat_array(rhs[1], line)
+            dst = self._mat_array(target, line, nsubs=len(src['decl']))
+            self._mat_redim(dst, list(src['cur']), line)
+            self._mat_map(dst, src, src, lambda a, b: a)
+            return None
+
+        if kind in ('add', 'sub'):
+            a = self._mat_array(rhs[1], line)
+            b = self._mat_array(rhs[2], line)
+            if a['cur'] != b['cur'] or len(a['decl']) != len(b['decl']):
+                raise BasicError("DIMENSION ERROR", line)
+            dst = self._mat_array(target, line, nsubs=len(a['decl']))
+            self._mat_redim(dst, list(a['cur']), line)
+            if kind == 'add':
+                self._mat_map(dst, a, b, lambda x, y: x + y)
+            else:
+                self._mat_map(dst, a, b, lambda x, y: x - y)
+            return None
+
+        if kind == 'scal':                      # MAT C = (K) * A
+            k = self.eval_num(rhs[1], line)
+            a = self._mat_array(rhs[2], line)
+            dst = self._mat_array(target, line, nsubs=len(a['decl']))
+            self._mat_redim(dst, list(a['cur']), line)
+            self._mat_map(dst, a, a, lambda x, y: k * x)
+            return None
+
+        if kind == 'trn':
+            if target == rhs[1]:
+                raise BasicError("ILLEGAL MAT TRANSPOSE", line)
+            a = self._mat_array(rhs[1], line)
+            if len(a['cur']) != 2:
+                raise BasicError("DIMENSION ERROR", line)
+            m, n = a['cur']
+            dst = self._mat_array(target, line, nsubs=2)
+            self._mat_redim(dst, [n, m], line)
+            for i in range(1, n + 1):
+                for j in range(1, m + 1):
+                    self._mset(dst, i, j, self._mget(a, j, i))
+            return None
+
+        if kind == 'mul':
+            if target in (rhs[1], rhs[2]):
+                raise BasicError("ILLEGAL MAT MULTIPLE", line)
+            a = self._mat_array(rhs[1], line)
+            b = self._mat_array(rhs[2], line)
+            m, p = self._mat_as_2d(a)
+            p2, n = self._mat_as_2d(b)
+            if p != p2:
+                raise BasicError("DIMENSION ERROR", line)
+            dst = self._mat_array(target, line)
+            if len(dst['decl']) == 1:
+                if n != 1:
+                    raise BasicError("DIMENSION ERROR", line)
+                self._mat_redim(dst, [m], line)
+            else:
+                self._mat_redim(dst, [m, n], line)
+
+            def aget(i, k):
+                return (self._mget(a, i) if len(a['cur']) == 1
+                        else self._mget(a, i, k))
+
+            def bget(k, j):
+                return (self._mget(b, k) if len(b['cur']) == 1
+                        else self._mget(b, k, j))
+
+            for i in range(1, m + 1):
+                for j in range(1, n + 1):
+                    total = 0.0
+                    for k2 in range(1, p + 1):
+                        total += aget(i, k2) * bget(k2, j)
+                    if len(dst['cur']) == 1:
+                        self._mset(dst, i, None, total)
+                    else:
+                        self._mset(dst, i, j, total)
+            return None
+
+        if kind == 'inv':
+            a = self._mat_array(rhs[1], line)
+            if len(a['cur']) != 2 or a['cur'][0] != a['cur'][1]:
+                raise BasicError("DIMENSION ERROR", line)
+            n = a['cur'][0]
+            work = [[self._mget(a, i, j) for j in range(1, n + 1)]
+                    for i in range(1, n + 1)]
+            inv, det = _invert(work, n)
+            self.det_val = det
+            dst = self._mat_array(target, line, nsubs=2)
+            self._mat_redim(dst, [n, n], line)
+            for i in range(1, n + 1):
+                for j in range(1, n + 1):
+                    # a singular matrix does not stop the program; DET is
+                    # set to 0 (sec. 2.6) and the result here is zeros
+                    self._mset(dst, i, j,
+                               inv[i - 1][j - 1] if inv is not None else 0.0)
+            return None
+
+        raise BasicError("ILLEGAL MAT FUNCTION", line)
+
+    def _mat_map(self, dst, a, b, f):
+        """dst = f(a, b) elementwise over the current dimensions."""
+        cur = dst['cur']
+        if len(cur) == 1:
+            for i in range(1, cur[0] + 1):
+                self._mset(dst, i, None,
+                           f(self._mget(a, i), self._mget(b, i)))
+        else:
+            for i in range(1, cur[0] + 1):
+                for j in range(1, cur[1] + 1):
+                    self._mset(dst, i, j,
+                               f(self._mget(a, i, j), self._mget(b, i, j)))
 
 
 # ----------------------------------------------------------------------------

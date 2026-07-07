@@ -35,12 +35,14 @@ test dependencies.
 
 **Two interpreter files, kept in sync:** `dbasic.py` (primary, clean Python 3)
 and `dbasic2.py` (a Python 2.7 fork for the author's legacy machine — same
-code plus `__future__` imports and small shims: `raw_input`, `time.clock`,
-`makedirs` without `exist_ok`, py2-style `super`). **Any semantic change to
-dbasic.py must be mirrored in dbasic2.py.** The `Python2Fork` tests enforce
+code plus `__future__` imports and small shims). **After changing dbasic.py,
+regenerate the fork with `make fork`** (runs `tools/make_fork.py`, a
+mechanical transform — its substitution list asserts exact occurrence counts,
+so it fails loudly if dbasic.py drifts from its expectations; update the list
+when adding py3-only constructs). The `Python2Fork` tests enforce
 byte-identical output under Python 3 always, and under `python2` when
-available. Avoid py3-only syntax in dbasic2.py (no f-strings in either file;
-`%`-formatting is the house style).
+available. Avoid py3-only syntax (no f-strings in either file; `%`-formatting
+is the house style).
 
 ## Architecture
 
@@ -89,8 +91,13 @@ Everything lives in `dbasic.py` (~1000 lines), deliberately one module:
   DTSS was a one-pass compiler, so trailing DATA after END is rejected;
   the bundled LOVE programs have END renumbered to 999 for this reason.
 - Non-goals: no `MID$`-family, no `PRINT USING`, no multi-statement lines, no
-  GUI. `MAT` and multi-line `DEF`/`FNEND` are intentional, documented gaps
-  that raise clear errors.
+  GUI. `MAT` (all thirteen §2.6 instructions, plus string-vector forms and
+  `NUM`/`DET`) and multiple-line `DEF`/`FNEND` (§2.2) are implemented. Key
+  MAT invariants: arrays carry `decl` (capacity bounds, fixed) and `cur`
+  (current logical dims, changed by redimensioning); the buffer is allocated
+  once at full capacity and redimensioning only changes the stride, which
+  reproduces the manual's element-relocation behavior; MAT ops work on
+  indices 1..m ignoring row/column 0.
 - Runtime arithmetic anomalies are **warnings, not errors** (manual §2.8):
   the interpreter prints the manual's message (`DIVISION BY ZERO`, `LOG OF
   ZERO`, `LOG OF NEGATIVE NUMBER`, `SQUARE ROOT OF A NEGATIVE NUMBER`,

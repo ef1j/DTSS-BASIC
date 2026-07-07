@@ -558,6 +558,272 @@ class T3MathWarnings(unittest.TestCase):
         self.assertIn('ILLEGAL CONSTANT', err)
 
 
+class T3Mat(unittest.TestCase):
+    """MAT statements per manual sec. 2.6 (strings: sec. 2.7)."""
+
+    def test_manual_matrix_example(self):
+        # the MATRIX sample program from manual p. 60, output verified
+        # against the printed teletype transcript
+        src = ('10 DIM A(20,20),B(20,20),C(20,20)\n'
+               '20 READ M,N\n'
+               '30 MAT READ A(M,N),B(N,N)\n'
+               '40 MAT C = A + A\n'
+               '50 MAT PRINT C;\n'
+               '60 MAT C = A*B\n'
+               '70 PRINT\n'
+               '75 PRINT "A*B =",\n'
+               '80 MAT PRINT C\n'
+               '90 DATA 2,3\n'
+               '91 DATA 1,2,3\n'
+               '92 DATA 4,5,6\n'
+               '93 DATA 1,0,-1\n'
+               '94 DATA 0,-1,-1\n'
+               '95 DATA -1,0,0\n'
+               '99 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        zone = ' ' * 12
+        self.assertEqual(out,
+                         ' 2  4  6 \n'
+                         ' 8  10  12 \n'
+                         '\n'
+                         'A*B =' + ' ' * 10 + '\n'
+                         '-2 ' + zone + '-2 ' + zone + '-3 \n'
+                         '-2 ' + zone + '-5 ' + zone + '-9 \n')
+
+    def test_zer_con_idn_ignore_row_and_column_zero(self):
+        src = ('10 DIM M(3,3)\n'
+               '20 LET M(0,1) = 9\n'
+               '30 MAT M = CON\n'
+               '40 PRINT M(0,1);M(1,1);M(0,0)\n'
+               '50 MAT M = IDN\n'
+               '60 PRINT M(1,1);M(1,2);M(2,2)\n'
+               '70 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 9  1  0 \n 1  0  1 \n')
+
+    def test_redimension_capacity_manual_example(self):
+        # manual p. 56: DIM M(20,7) allows ZER(25,5) (156 <= 168
+        # components) but not ZER(16,10) (187 > 168)
+        ok = ('10 DIM M(20,7)\n20 MAT M = ZER(25,5)\n'
+              '30 PRINT M(25,5)\n40 END\n')
+        out, err, rc = run_src(ok)
+        self.assertEqual(rc, 0, err)
+        bad = '10 DIM M(20,7)\n20 MAT M = ZER(16,10)\n30 END\n'
+        _, err, rc = run_src(bad)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('DIMENSION ERROR', err)
+
+    def test_redimension_relocates_row_zero_manual_example(self):
+        # manual p. 56: after MAT READ M(2,2), M(1,0) and M(2,0) are 0
+        src = ('10 DIM M(20,7)\n'
+               '20 LET M(1,0) = 1\n'
+               '30 LET M(2,0) = 1\n'
+               '40 MAT READ M(2,2)\n'
+               '50 PRINT M(1,0);M(2,0);M(2,2)\n'
+               '60 DATA 5,6,7,8\n'
+               '70 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 0  0  8 \n')
+
+    def test_matrix_times_vector(self):
+        src = ('10 DIM A(2,2),V(2),W(2)\n'
+               '20 MAT READ A(2,2),V(2)\n'
+               '30 MAT W = A*V\n'
+               '40 MAT PRINT W;\n'
+               '50 DATA 1,2,3,4,10,20\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 50  110 \n')
+
+    def test_transpose_and_illegal_forms(self):
+        src = ('10 MAT READ A(2,3)\n'
+               '20 MAT B = TRN(A)\n'
+               '30 MAT PRINT B;\n'
+               '40 DATA 1,2,3,4,5,6\n'
+               '50 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 1  4 \n 2  5 \n 3  6 \n')
+        _, err, rc = run_src('10 MAT READ A(2,2)\n20 MAT A = TRN(A)\n'
+                             '30 DATA 1,2,3,4\n40 END\n')
+        self.assertNotEqual(rc, 0)
+        self.assertIn('ILLEGAL MAT TRANSPOSE', err)
+        _, err, rc = run_src('10 MAT A = CON(2,2)\n20 MAT B = CON(2,2)\n'
+                             '30 MAT A = A*B\n40 END\n')
+        self.assertNotEqual(rc, 0)
+        self.assertIn('ILLEGAL MAT MULTIPLE', err)
+
+    def test_inv_and_det(self):
+        src = ('10 MAT READ A(2,2)\n'
+               '20 MAT B = INV(A)\n'
+               '30 MAT PRINT B;\n'
+               '40 PRINT DET\n'
+               '50 DATA 2,0,0,4\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 0.5  0 \n 0  0.25 \n 8 \n')
+
+    def test_inv_singular_continues_with_det_zero(self):
+        src = ('10 MAT A = ZER(2,2)\n'
+               '20 MAT B = INV(A)\n'
+               '30 PRINT DET\n'
+               '40 PRINT "STILL RUNNING"\n'
+               '50 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 0 \nSTILL RUNNING\n')
+
+    def test_scalar_multiplication(self):
+        src = ('10 MAT READ A(2,2)\n'
+               '20 LET K = 3\n'
+               '30 MAT A = (K+1)*A\n'
+               '40 MAT PRINT A;\n'
+               '50 DATA 1,2,3,4\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 4  8 \n 12  16 \n')
+
+    def test_add_dimension_mismatch(self):
+        src = ('10 MAT A = CON(2,2)\n20 MAT B = CON(3,3)\n'
+               '30 MAT C = A + B\n40 END\n')
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('DIMENSION ERROR', err)
+
+    def test_mat_input_ampersand_and_num(self):
+        src = ('10 DIM V(20)\n'
+               '20 MAT INPUT V\n'
+               '30 PRINT NUM;V(NUM)\n'
+               '40 END\n')
+        out, err, rc = run_src(src, stdin='1,2,3&\n4,5\n')
+        self.assertEqual(rc, 0, err)
+        self.assertIn(' 5  5 \n', out)
+
+    def test_mat_input_empty_line_gives_num_zero(self):
+        src = '10 MAT INPUT V\n20 PRINT NUM\n30 END\n'
+        out, err, rc = run_src(src, stdin='\n')
+        self.assertEqual(rc, 0, err)
+        self.assertIn(' 0 \n', out)
+
+    def test_string_vector_mat_read_and_packed_print(self):
+        src = ('10 DIM M$(5)\n'
+               '20 MAT READ M$(3)\n'
+               '30 MAT PRINT M$;\n'
+               '40 DATA "TIME-", SHAR, ING\n'
+               '50 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, 'TIME-SHARING\n')
+
+    def test_vector_prints_as_column_by_default(self):
+        src = ('10 MAT READ V(3)\n20 MAT PRINT V\n'
+               '30 DATA 1,2,3\n40 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 1 \n 2 \n 3 \n')
+
+    def test_copy_redimensions_target(self):
+        src = ('10 DIM B(10,10)\n'
+               '20 MAT READ A(2,3)\n'
+               '30 MAT B = A\n'
+               '40 MAT PRINT B;\n'
+               '50 DATA 1,2,3,4,5,6\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 1  2  3 \n 4  5  6 \n')
+
+
+class T3MultiLineDef(unittest.TestCase):
+    """Multiple-line DEF ... FNEND (manual sec. 2.2)."""
+
+    def test_manual_max_and_factorial_examples(self):
+        src = ('10 DEF FNM(X,Y)\n'
+               '20 LET FNM = X\n'
+               '30 IF Y <= X THEN 50\n'
+               '40 LET FNM = Y\n'
+               '50 FNEND\n'
+               '60 DEF FNF(N)\n'
+               '70 LET FNF = 1\n'
+               '80 FOR K = 1 TO N\n'
+               '90 LET FNF = K * FNF\n'
+               '100 NEXT K\n'
+               '110 FNEND\n'
+               '120 PRINT FNM(3,7);FNM(12,5);FNF(5)\n'
+               '130 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 7  12  120 \n')
+
+    def test_body_is_skipped_when_not_called(self):
+        src = ('10 DEF FNA(X)\n'
+               '20 PRINT "INSIDE"\n'
+               '30 LET FNA = X\n'
+               '40 FNEND\n'
+               '50 PRINT "OUTSIDE"\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, 'OUTSIDE\n')
+
+    def test_globals_visible_inside(self):
+        src = ('10 LET A = 10\n'
+               '20 DEF FNG(X)\n'
+               '30 LET FNG = X + A\n'
+               '40 FNEND\n'
+               '50 PRINT FNG(5)\n'
+               '60 END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 15 \n')
+
+    def test_nested_def_rejected(self):
+        src = ('10 DEF FNA(X)\n20 DEF FNB(Y)\n30 FNEND\n'
+               '40 FNEND\n50 END\n')
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('NESTED DEF', err)
+
+    def test_unfinished_def_rejected(self):
+        src = '10 DEF FNA(X)\n20 LET FNA = X\n30 END\n'
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('UNFINISHED DEF', err)
+
+    def test_transfer_into_def_rejected(self):
+        src = ('10 GO TO 40\n'
+               '20 DEF FNA(X)\n30 LET FNA = X\n40 LET FNA = 1\n50 FNEND\n'
+               '60 END\n')
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('TRANSFER', err)
+
+    def test_transfer_out_of_def_rejected(self):
+        src = ('10 DEF FNA(X)\n20 GO TO 60\n30 LET FNA = X\n40 FNEND\n'
+               '60 END\n')
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('TRANSFER', err)
+
+    def test_fnend_without_def_rejected(self):
+        _, err, rc = run_src('10 FNEND\n20 END\n')
+        self.assertNotEqual(rc, 0)
+        self.assertIn('FNEND WITHOUT DEF', err)
+
+    def test_let_fn_outside_def_rejected(self):
+        src = ('10 DEF FNA(X)\n20 LET FNA = X\n30 FNEND\n'
+               '40 LET FNA = 5\n50 END\n')
+        _, err, rc = run_src(src)
+        self.assertNotEqual(rc, 0)
+        self.assertIn('OUTSIDE ITS DEF', err)
+
+
 class T3Input(unittest.TestCase):
     def test_input_reads_stdin(self):
         src = '10 INPUT A, B\n20 PRINT A+B\n30 END\n'

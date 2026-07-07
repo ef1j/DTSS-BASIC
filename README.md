@@ -104,7 +104,9 @@ The suite implements the acceptance tests of the build spec:
   boundaries, 1-D/2-D arrays and bounds, GOSUB/RETURN nesting, ON…GO TO,
   CHANGE round-trips, string vectors, separate numeric/string DATA pools,
   IF…THEN line-number-only, rejection of multi-statement lines, RND
-  repeatability.
+  repeatability, the full MAT set (including the manual's own MATRIX
+  example program and its redimensioning examples), and multiple-line
+  DEF/FNEND (including the manual's max and factorial examples).
 - **T4** — `library/FTBALL` runs on canned stdin without crashing.
 
 ## Language summary
@@ -112,12 +114,25 @@ The suite implements the acceptance tests of the build spec:
 Statements: `LET` (keyword required), `READ` / `DATA` / `RESTORE` (also
 `RESTORE*` numeric-only and `RESTORE$` string-only, per manual §2.7), `PRINT`,
 `GO TO` / `GOTO`, `ON … GO TO`, `IF … THEN <line>`, `FOR … TO … [STEP]` /
-`NEXT`, `DIM`, `DEF FNA`–`FNZ` (single-line, zero or more arguments), `GOSUB` /
-`RETURN`, `INPUT`, `CHANGE`, `REM`, `RANDOMIZE` (`RANDOM`), `STOP`, `END`.
+`NEXT`, `DIM`, `DEF FNA`–`FNZ` (single-line with zero or more arguments, and
+multiple-line `DEF` … `FNEND` per §2.2, where `LET FNx = …` sets the return
+value and transfers may not cross the DEF boundary), `GOSUB` / `RETURN`,
+`INPUT`, `CHANGE`, `REM`, `RANDOMIZE` (`RANDOM`), `STOP`, `END`.
+
+The thirteen `MAT` instructions of §2.6 are implemented: `MAT READ` (with
+redimensioning, e.g. `MAT READ A(M,N)`), `MAT PRINT` (`;` packed, `,` zones;
+vectors print as columns by default), `MAT INPUT` (variable-length, `&`
+continues on the next line, `NUM` gives the count), `MAT C = A`, `A + B`,
+`A - B`, `A * B`, `(K) * A`, `TRN(A)`, `INV(A)` (with `DET`), `ZER`, `CON`,
+`IDN` — including the string-vector forms of `MAT READ/PRINT/INPUT` (§2.7).
+MAT instructions ignore row and column 0, which still count toward the
+capacity set by `DIM`; redimensioning relocates elements exactly as the
+manual describes.
 
 Functions: `SIN COS TAN ATN EXP LOG ABS SQR INT RND SGN`, plus `TAB(n)`
-inside `PRINT`. `RND` takes no argument and yields the **same sequence on
-every RUN** unless the program executes `RANDOMIZE` (manual §2.2).
+inside `PRINT` and the parameterless `NUM` and `DET`. `RND` takes no
+argument and yields the **same sequence on every RUN** unless the program
+executes `RANDOMIZE` (manual §2.2).
 
 PRINT follows the manual's 75-column, five-zone teleprinter model: `,`
 advances to the next 15-column zone (to a new line from the fifth zone); `;`
@@ -159,10 +174,17 @@ Every intentional departure from the 1968 manual, and why:
    matching the manual's actual teletype sample outputs (§2.1, §2.2). The
    manual's prose example writes `3.24376E+10` without the space, and the
    build spec quotes that prose form; the observed output form was chosen.
-6. **Not implemented:** `MAT` statements (and the `NUM`/`DET` functions) and
-   multiple-line `DEF`/`FNEND`. Both are documented in the manual but are
-   not needed by the acceptance tests; using them produces a clear error.
-   This is a known gap, permitted by the build spec.
+6. **`MAT` and multiple-line `DEF` implementation choices** (both features
+   are implemented per §2.6/§2.2; these are the points the manual leaves
+   open). Inverting a singular matrix sets `DET = 0` and continues, as
+   documented — the manual does not specify the result matrix's contents,
+   so it is zeroed here. After a `MAT` instruction redimensions an array,
+   scalar subscripts are checked against the *current* dimensions (identical
+   to the `DIM` bounds until then; the manual's `ZER(25,5)`-under-`DIM
+   M(20,7)` example requires an axis beyond its DIM bound to be
+   addressable). `MAT A = A * B` is rejected with `ILLEGAL MAT MULTIPLE`
+   per the §2.8 error list (§2.6's prose instead warns the in-place result
+   would be "nonsense"). `TRN`/`INV` require matrix (not vector) operands.
 7. **Arithmetic warnings behave as documented in §2.8** — the machine
    prints a message, supplies a value, and *continues running*:
    `DIVISION BY ZERO` and `ZERO TO A NEGATIVE POWER` supply +1.70141E+38;
