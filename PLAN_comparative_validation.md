@@ -296,7 +296,7 @@ system as documented in the 1 Jan 1968 manual.)*
 
 | # | Gap / action | Source of evidence | Class | Priority |
 |---|---|---|---|---|
-| G1 | Free-form (space-insensitive) lexing not supported | DTSS practice; cpp-tutor demonstrates technique | STRICT (candidate) | P1 — decide Option A vs B (§1) |
+| G1 | ~~Free-form lexing~~ **DONE** — Option A implemented (space-strip + keyword carving); crunched-LOVE2 byte-identity test added; DEVIATIONS 16 documents the three edges. COT added alongside (found in §1.2 during the same manual pass). | DTSS practice; manual §1.5 line-number rule; cpp-tutor technique | STRICT | ✅ complete |
 | G2 | Blank numbered lines rejected in batch files | TPK source runs on revived DTSS | TOLERATED→STRICT | P1 — small change |
 | G3 | Adopt TPK as Tier-A fixture with chrome-mask diff | project-tpk transcript | validation | P2 (after G2) |
 | G4 | Formalize `tests/fixtures/manual/` page-cited corpus | cpp-tutor corpus shape; our hand-verified examples | validation | P2 |

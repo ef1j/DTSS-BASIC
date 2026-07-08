@@ -48,10 +48,15 @@ is the house style).
 
 Everything lives in `dbasic.py` (~1000 lines), deliberately one module:
 
-- **Lexer/Parser** — regex tokenizer + recursive-descent `Parser`. Statements
-  parse to plain tuples, expressions to nested AST tuples (`('bin','+',l,r)`
-  etc.). Precedence: `^` > unary `-` > `*` `/` > `+` `-`. `REM` and `DATA` are
-  handled from raw text (unquoted DATA strings may contain spaces).
+- **Lexer/Parser** — free-form carving lexer + recursive-descent `Parser`.
+  Source is space-insensitive outside quotes (DTSS behavior): spaces are
+  deleted per statement at compile time, then keywords are carved from
+  letter runs longest-first (`LEX_KEYWORDS`); V4's letter+optional-digit
+  variable names make this unambiguous. Statements parse to plain tuples,
+  expressions to nested AST tuples (`('bin','+',l,r)` etc.). Precedence:
+  `^` > unary `-` > `*` `/` > `+` `-` (and `A^B^C` is left-associative,
+  manual p. 12). `REM` and `DATA` are handled from raw text *before* the
+  space-strip (unquoted DATA strings keep interior spaces).
 - **`Program`** — compile step: parses every line, builds the **two separate
   DATA pools** (numeric and string — genuinely independent, manual §2.7),
   registers `DEF` functions and `DIM`s, statically pairs FOR/NEXT (proper

@@ -195,10 +195,15 @@ MAT instructions ignore row and column 0, which still count toward the
 capacity set by `DIM`; redimensioning relocates elements exactly as the
 manual describes.
 
-Functions: `SIN COS TAN ATN EXP LOG ABS SQR INT RND SGN`, plus `TAB(n)`
-inside `PRINT` and the parameterless `NUM` and `DET`. `RND` takes no
-argument and yields the **same sequence on every RUN** unless the program
-executes `RANDOMIZE` (manual §2.2).
+Functions: `SIN COS TAN COT ATN EXP LOG ABS SQR INT RND SGN` (the §1.2
+table, including cotangent), plus `TAB(n)` inside `PRINT` and the
+parameterless `NUM` and `DET`. `RND` takes no argument and yields the
+**same sequence on every RUN** unless the program executes `RANDOMIZE`
+(manual §2.2).
+
+Source is **free-form**, as on DTSS: spaces outside quoted strings have no
+meaning, so `15LETG=A*E-B*D` and `FORI=1TO3` are legal (see DEVIATIONS 16
+for the three edges of this rule).
 
 PRINT follows the manual's 75-column, five-zone teleprinter model: `,`
 advances to the next 15-column zone (to a new line from the fifth zone); `;`
@@ -315,12 +320,19 @@ Every intentional departure from the 1968 manual, and why:
     the sequence is repeatable across runs *and* across Python versions. The
     historical generator's actual sequence is unknown; only its contract
     (repeatable, strictly between 0 and 1) is reproduced.
-16. **Known gap — free-form spacing.** DTSS BASIC ignored spaces outside
-    quoted strings, so `15LETG=A*E-B*D` was legal; this interpreter is
-    whitespace-tolerant between tokens but requires keywords to be
-    delimited, and rejects run-together source. Under evaluation (see
-    `PLAN_comparative_validation.md`, item G1); no program in the bundled
-    corpus is affected.
+16. **Free-form spacing is supported, with three edges.** Spaces outside
+    quoted strings have no meaning (`15LETG=A*E-B*D` works, and `X 1` is
+    the variable `X1`); keywords are carved out of letter runs
+    longest-first, which the Fourth Edition's one-letter-plus-digit
+    variable names make unambiguous in practice. Edges: (a) line numbers
+    must be contiguous digits — the manual itself requires this (§1.5:
+    a line number "contains no spaces or non-digit characters");
+    (b) the `DATA` and `REM` keywords themselves must not be spaced apart
+    (their *contents* are raw text where spaces are significant, per the
+    manual); (c) keyword carving is greedy, so the pathological
+    `FOR X = S TO P9` crunched to `FORX=STOP9` reads `STOP` — an
+    ambiguity inherent to space-free source that period compilers faced
+    too. No program in the bundled corpus is affected by any edge.
 17. **Known gap — blank numbered lines.** A line number followed by
     nothing is accepted by real DTSS in stored programs (witnessed by the
     revived-DTSS TPK transcript in `timereshared/project-tpk`) but is

@@ -186,6 +186,16 @@ class T3NumberFormat(unittest.TestCase):
             ('SGN(-.2387)', '-1 '),
         ])
 
+    def test_cot(self):
+        # COT is in the manual's sec. 1.2 function table
+        self.cases([
+            ('COT(1)', ' 0.642093 '),
+        ])
+        out, err, rc = run_src('10 PRINT COT(0)\n20 END\n')
+        self.assertEqual(rc, 0)
+        self.assertEqual(out, ' 1.70141 E+38 \n')
+        self.assertIn('DIVISION BY ZERO IN 10', err)
+
 
 class T3ForNext(unittest.TestCase):
     def test_basic_and_step_and_zero_trip(self):
@@ -497,6 +507,83 @@ class T3Syntax(unittest.TestCase):
         out, _, rc = run_src(src)
         self.assertEqual(rc, 0)
         self.assertEqual(out, '')
+
+
+def crunch(line):
+    """Delete spaces outside quoted strings (DTSS free-form source)."""
+    out, inq = [], False
+    for ch in line:
+        if ch == '"':
+            inq = not inq
+            out.append(ch)
+        elif ch == ' ' and not inq:
+            continue
+        else:
+            out.append(ch)
+    return ''.join(out)
+
+
+class T3FreeForm(unittest.TestCase):
+    """DTSS source is free-form: spaces outside quotes have no meaning."""
+
+    def test_run_together_statement(self):
+        # the manual's LINEAR program line 15, crunched
+        src = ('10READA,B,D,E\n'
+               '15LETG=A*E-B*D\n'
+               '20PRINTG\n'
+               '30DATA1,2,4,2\n'
+               '40END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, '-6 \n')
+
+    def test_crunched_for_next_if(self):
+        src = ('10FORI=1TO3\n'
+               '20PRINTI;\n'
+               '30NEXTI\n'
+               '40IFI>3THEN60\n'
+               '50PRINT"NO"\n'
+               '60END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 1  2  3 \n')
+
+    def test_spaces_merge_within_names(self):
+        # true insensitivity: X 1 is the variable X1
+        src = '10 LET X 1 = 7\n20 PRINT X 1\n30 END\n'
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 7 \n')
+
+    def test_crunched_def_mat_change(self):
+        src = ('10DEFFNS(X)=X*X\n'
+               '20MATA=CON(2,2)\n'
+               '30MATA=(FNS(2))*A\n'
+               '40MATPRINTA;\n'
+               '50LETA$="HI"\n'
+               '60CHANGEA$TON\n'
+               '70PRINTN(0)\n'
+               '80END\n')
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, ' 4  4 \n 4  4 \n 2 \n')
+
+    def test_quoted_strings_keep_spaces(self):
+        src = '10PRINT"A B  C"\n20END\n'
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, 'A B  C\n')
+
+    def test_crunched_love2_matches_reference(self):
+        # crunching the whole column-locked LOVE program must not change
+        # a single output character
+        with open(os.path.join(LIBRARY, 'LOVE2')) as f:
+            crunched = ''.join(crunch(ln) + '\n'
+                               for ln in f.read().splitlines())
+        out, err, rc = run_src(crunched)
+        self.assertEqual(rc, 0, err)
+        with open(os.path.join(FIXTURES, 'LOVE.txt')) as f:
+            self.assertEqual(out, f.read())
 
 
 class T3Functions(unittest.TestCase):

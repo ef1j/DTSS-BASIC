@@ -78,30 +78,91 @@ class StopRun(Exception):
 # Lexer
 # ----------------------------------------------------------------------------
 
-TOKEN_RE = re.compile(r'''
-      (?P<ws>\s+)
-    | (?P<num>(?:\d+\.?\d*|\.\d+)(?:E[+-]?\d+)?)
-    | (?P<str>"[^"]*")
-    | (?P<id>[A-Z][A-Z0-9]*\$?)
-    | (?P<op><=|>=|<>|[#<>=+\-*/^(),;:])
-''', re.X)
+# Vocabulary for the carving lexer, tried longest-first at each position.
+LEX_KEYWORDS = tuple(sorted((
+    'RANDOMIZE', 'RESTORE$', 'RESTORE', 'CHANGE', 'RANDOM', 'RETURN',
+    'GOSUB', 'FNEND', 'INPUT', 'PRINT', 'THEN', 'STEP', 'GOTO', 'NEXT',
+    'READ', 'STOP', 'DATA', 'LET', 'DIM', 'DEF', 'END', 'FOR', 'MAT',
+    'TAB', 'NUM', 'DET', 'ZER', 'CON', 'IDN', 'TRN', 'INV', 'RND',
+    'SIN', 'COS', 'TAN', 'COT', 'ATN', 'EXP', 'LOG', 'ABS', 'SQR',
+    'INT', 'SGN', 'REM', 'ON', 'IF', 'TO', 'GO',
+), key=len, reverse=True))
+
+NUM_TOKEN_RE = re.compile(r'(?:\d+\.?\d*|\.\d+)(?:E[+-]?\d+)?')
+OP_TOKEN_RE = re.compile(r'<=|>=|<>|[#<>=+\-*/^(),;:]')
 
 
 def tokenize(text, line=None):
+    """Tokenize one (space-stripped) statement.
+
+    DTSS BASIC source is free-form -- spaces outside quoted strings have
+    no meaning, so 15LETG=A*E-B*D is legal.  Identifiers are therefore
+    carved keyword-first: because Fourth Edition variables are one letter
+    plus an optional digit, any longer letter run in valid source must
+    decompose into keywords, function names and FN-names, which makes
+    space-free source unambiguous.
+    """
     toks = []
     i, n = 0, len(text)
     while i < n:
-        m = TOKEN_RE.match(text, i)
-        if not m:
-            raise BasicError("ILLEGAL CHARACTER '%s'" % text[i], line)
-        i = m.end()
-        if m.lastgroup == 'ws':
+        ch = text[i]
+        if ch in ' \t':
+            i += 1
             continue
-        val = m.group()
-        if m.lastgroup == 'str':
-            val = val[1:-1]
-        toks.append((m.lastgroup, val))
+        if ch == '"':
+            j = text.find('"', i + 1)
+            if j < 0:
+                raise BasicError("ILLEGAL FORMAT (UNCLOSED QUOTE)", line)
+            toks.append(('str', text[i + 1:j]))
+            i = j + 1
+            continue
+        m = NUM_TOKEN_RE.match(text, i)
+        if m:
+            toks.append(('num', m.group()))
+            i = m.end()
+            continue
+        if 'A' <= ch <= 'Z':
+            kw = None
+            for k in LEX_KEYWORDS:
+                if text.startswith(k, i):
+                    kw = k
+                    break
+            if kw is not None:
+                toks.append(('id', kw))
+                i += len(kw)
+                continue
+            if (text.startswith('FN', i) and i + 2 < n
+                    and 'A' <= text[i + 2] <= 'Z'):
+                toks.append(('id', text[i:i + 3]))
+                i += 3
+                continue
+            j = i + 1
+            if j < n and (text[j].isdigit() or text[j] == '$'):
+                j += 1
+            toks.append(('id', text[i:j]))
+            i = j
+            continue
+        m = OP_TOKEN_RE.match(text, i)
+        if m:
+            toks.append(('op', m.group()))
+            i = m.end()
+            continue
+        raise BasicError("ILLEGAL CHARACTER '%s'" % ch, line)
     return toks
+
+
+def strip_spaces_outside_quotes(s):
+    """Delete spaces outside quoted strings: DTSS source is free-form."""
+    out, inq = [], False
+    for ch in s:
+        if ch == '"':
+            inq = not inq
+            out.append(ch)
+        elif ch in ' \t' and not inq:
+            continue
+        else:
+            out.append(ch)
+    return ''.join(out)
 
 
 def upcase_outside_quotes(s):
@@ -150,7 +211,8 @@ def split_csv(text):
 # Parser
 # ----------------------------------------------------------------------------
 
-BUILTINS = {'SIN', 'COS', 'TAN', 'ATN', 'EXP', 'LOG', 'ABS', 'SQR', 'INT', 'SGN'}
+BUILTINS = {'SIN', 'COS', 'TAN', 'COT', 'ATN', 'EXP', 'LOG', 'ABS', 'SQR',
+            'INT', 'SGN'}
 NUMVAR_RE = re.compile(r'^[A-Z][0-9]?$')     # A, X, A0-Z9 (sec. 1.2)
 STRVAR_RE = re.compile(r'^[A-Z]\$$')         # A$ (sec. 2.7)
 FN_RE = re.compile(r'^FN[A-Z]$')             # FNA-FNZ (sec. 2.2)
@@ -492,6 +554,7 @@ def parse_statement(text, line):
         idx = text.upper().index('DATA') + 4
         return ('DATA', text[idx:])
     text = strip_remark(text)
+    text = strip_spaces_outside_quotes(text)
     toks = tokenize(text, line)
     if not toks:
         raise BasicError("ILLEGAL INSTRUCTION", line)
@@ -1169,6 +1232,12 @@ class Interp:
                 return math.cos(x)
             if name == 'TAN':
                 return self._check_range(math.tan(x), line)
+            if name == 'COT':
+                s = math.sin(x)
+                if s == 0:
+                    self.warn("DIVISION BY ZERO", line)
+                    return MAXNUM
+                return self._check_range(math.cos(x) / s, line)
             if name == 'ATN':
                 return math.atan(x)
             if name == 'EXP':
