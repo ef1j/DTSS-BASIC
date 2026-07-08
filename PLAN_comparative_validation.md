@@ -45,6 +45,21 @@ explicit non-goal of our spec — the repo's "V4" label is looser than ours;
 program needs vetting against the 1968 manual before being admitted as a
 fixture.
 
+**`maurymarkowitz/RetroBASIC`** (cited by Illustrating-BASIC as its
+runtime; same author) — a C interpreter built with lex/yacc whose goal is
+the *union* of era dialects (MS, Dartmouth V4, HP Timeshared, Tiny, DEC)
+behind per-dialect switches: `--array-base` (default 1 — note Dartmouth is
+0-based), `--random` seeding, optional HP-style string slicing, and a
+static-analysis mode that prints feature-usage statistics across vintage
+programs. Variable names are capped at two characters to support MS-style
+"crunched" (space-free) source. For our purposes: (a) it is the reference
+runtime the Alcock corpus was normalized against, so Tier-C disagreements
+should be triangulated ours-vs-RetroBASIC-vs-manual; (b) its statistics
+mode is a model worth borrowing if the paper ever needs corpus-wide
+feature-frequency claims; (c) its union-dialect posture is the structured
+version of what WA6YDQ does ad hoc — useful, but the complement of a
+single-edition fidelity tool.
+
 **`timereshared/project-tpk`** — implementations of the Trabb Pardo–Knuth
 algorithm (read 11 numbers; for each, in reverse, compute √|x| + 5x³;
 print value or `TOO LARGE` if > 400) across vintage systems, **with actual

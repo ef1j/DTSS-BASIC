@@ -47,12 +47,23 @@ and validation plan is in `PLAN_comparative_validation.md`.
   operators) are added. A retro-styled modern dialect — a legitimate goal,
   but the opposite of this project's compliance policy, under which every
   one of those choices is a rejected modernism.
+- **[maurymarkowitz/RetroBASIC](https://github.com/maurymarkowitz/RetroBASIC)**
+  — a C (lex/yacc) interpreter whose goal is breadth: one runtime for
+  "almost any dialect from the era" (MS, Dartmouth V4, HP Timeshared,
+  Tiny, DEC), with per-dialect switches (`--array-base`, string slicing)
+  and a static-statistics mode that surveys feature usage across vintage
+  programs — a genuinely useful research instrument. The design trade is
+  the mirror image of ours: RetroBASIC relaxes any single dialect's rules
+  so that *every* dialect's programs run; this project fixes exactly one
+  edition and enforces it, so that a program's running here *means*
+  something about 1968. Neither substitutes for the other.
 - **[maurymarkowitz/Illustrating-BASIC](https://github.com/maurymarkowitz/Illustrating-BASIC)**
   — transcriptions of the programs in Donald Alcock's *Illustrating BASIC*
-  (1977), labeled "Dartmouth V4". Valuable as a breadth corpus (its MAT
-  programs run here), but its dialect is looser than the 1 January 1968
-  manual: it exercises `PRINT USING`, which postdates the Fourth Edition
-  and is a documented non-goal here.
+  (1977), labeled "Dartmouth V4"; RetroBASIC (above, same author) is its
+  intended runtime. Valuable as a breadth corpus (its MAT programs run
+  here), but its dialect is looser than the 1 January 1968 manual: it
+  exercises `PRINT USING`, which postdates the Fourth Edition and is a
+  documented non-goal here.
 - **[timereshared/project-tpk](https://github.com/timereshared/project-tpk)**
   — the Trabb Pardo–Knuth algorithm on vintage systems, including
   execution transcripts from the *revived DTSS itself*. Not an
