@@ -21,6 +21,53 @@ demonstrating that period-accurate programs run and produce the expected
 output under Fourth-Edition semantics; it is evidence of feasibility, not of
 what any historical author actually wrote.
 
+## Related work, and how this project differs
+
+Several open-source projects touch Dartmouth BASIC; none has this project's
+goal — **byte-exact Fourth Edition (1968) teleprinter output from the manual
+as sole normative source** — which is why it exists. A detailed comparison
+and validation plan is in `PLAN_comparative_validation.md`.
+
+- **[cpp-tutor/dbasic](https://github.com/cpp-tutor/dbasic)** — a *compiler*
+  (D language, targeting LLVM IR) for the early Dartmouth BASICs, with a
+  command-line switch that gates keywords by historical edition (currently
+  First–Fourth) and a test corpus built from the manuals' own page-numbered
+  examples. The closest project in spirit; complementary rather than
+  overlapping. It lexes classic free-form source (`15LETG=A*E-B*D`) and
+  lints editions; it does not model the 75-column teleprinter, the §2.1
+  numeric-output rules, the §2.8 warn-and-continue arithmetic, or the
+  manual's error vocabulary — the fidelity surface this interpreter pins
+  with byte-exact tests. It also omits the `#` not-equal synonym.
+- **[WA6YDQ/dbasic](https://github.com/WA6YDQ/dbasic)** — an interactive C
+  interpreter that follows 1968 rules *with declared exceptions*, and the
+  exceptions redefine the language: `**` replaces `^` (breaking every
+  historical program that exponentiates), `!=` is accepted, variables are
+  bare `A`–`Z` only, `GO TO` must be written `GOTO`, MAT is absent, and
+  post-1968 features (`MID$`-family functions, string `+`, logical
+  operators) are added. A retro-styled modern dialect — a legitimate goal,
+  but the opposite of this project's compliance policy, under which every
+  one of those choices is a rejected modernism.
+- **[maurymarkowitz/Illustrating-BASIC](https://github.com/maurymarkowitz/Illustrating-BASIC)**
+  — transcriptions of the programs in Donald Alcock's *Illustrating BASIC*
+  (1977), labeled "Dartmouth V4". Valuable as a breadth corpus (its MAT
+  programs run here), but its dialect is looser than the 1 January 1968
+  manual: it exercises `PRINT USING`, which postdates the Fourth Edition
+  and is a documented non-goal here.
+- **[timereshared/project-tpk](https://github.com/timereshared/project-tpk)**
+  — the Trabb Pardo–Knuth algorithm on vintage systems, including
+  execution transcripts from the *revived DTSS itself*. Not an
+  implementation to compare against but ground truth to validate with:
+  its transcript's numeric formatting matches this interpreter's §2.1
+  formatter, and its BASIC source exposed one genuine gap (blank numbered
+  lines — see DEVIATIONS).
+
+In short: existing projects modernize the dialect (WA6YDQ), compile rather
+than interpret with a different fidelity surface (cpp-tutor), or supply
+corpora and ground truth (Illustrating-BASIC, project-tpk). This project's
+niche — a readable, dependency-free interpreter whose output is tested
+character-for-character against the 1968 manual's samples and period
+teleprinter captures — is not otherwise occupied.
+
 ## Usage
 
 ### Batch mode (primary, reproducible)
@@ -257,6 +304,17 @@ Every intentional departure from the 1968 manual, and why:
     the sequence is repeatable across runs *and* across Python versions. The
     historical generator's actual sequence is unknown; only its contract
     (repeatable, strictly between 0 and 1) is reproduced.
+16. **Known gap — free-form spacing.** DTSS BASIC ignored spaces outside
+    quoted strings, so `15LETG=A*E-B*D` was legal; this interpreter is
+    whitespace-tolerant between tokens but requires keywords to be
+    delimited, and rejects run-together source. Under evaluation (see
+    `PLAN_comparative_validation.md`, item G1); no program in the bundled
+    corpus is affected.
+17. **Known gap — blank numbered lines.** A line number followed by
+    nothing is accepted by real DTSS in stored programs (witnessed by the
+    revived-DTSS TPK transcript in `timereshared/project-tpk`) but is
+    currently rejected here in batch files (interactively, a bare number
+    deletes the line, as on DTSS). Scheduled fix (item G2).
 
 ## Repository layout
 
