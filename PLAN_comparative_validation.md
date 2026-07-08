@@ -120,15 +120,21 @@ conventionally spaced), which is why this gap has been invisible.
   scheduled as its own change; until then, B's DEVIATIONS entry should be
   added so the gap is on the record.
 
-### Discovered gap: blank numbered lines
+### Discovered gap: bare line numbers in program files (corrected)
 
 The TPK source that *runs on revived DTSS* contains lines `110` and `130`
-that are **line numbers followed by nothing**. Real DTSS accepts them;
-our loader stores an empty statement and fails at compile with `ILLEGAL
-INSTRUCTION`. Proposed behavior: accept and treat as no-ops in files
-(batch), while retaining the interactive rule that a bare number *typed at
-the console* deletes that line. Until fixed, TPK cannot run unmodified —
-this is the first concrete blocker for §3 Tier A.
+that are line numbers followed by nothing. Initial reading ("DTSS accepts
+blank lines in stored programs") was wrong: DTSS has no file-load path
+distinct from terminal entry — even paper tape is replayed as if typed
+(Appendix A, TAPE/KEY) — and at entry a bare line number is a *deletion*,
+a no-op when the line does not exist. So DTSS never stores such lines;
+the TPK file loads because its spacer lines delete nothing. Corrected
+proposal: our batch loader should apply terminal-entry semantics — a
+numbered line with an empty body deletes that line from the program
+being assembled (no-op if absent) — unifying batch and interactive
+line-entry behavior instead of special-casing "blank statements". Until
+implemented, TPK cannot run unmodified; first concrete blocker for §3
+Tier A.
 
 ---
 
@@ -297,7 +303,7 @@ system as documented in the 1 Jan 1968 manual.)*
 | # | Gap / action | Source of evidence | Class | Priority |
 |---|---|---|---|---|
 | G1 | ~~Free-form lexing~~ **DONE** — Option A implemented (space-strip + keyword carving); crunched-LOVE2 byte-identity test added; DEVIATIONS 16 documents the three edges. COT added alongside (found in §1.2 during the same manual pass). | DTSS practice; manual §1.5 line-number rule; cpp-tutor technique | STRICT | ✅ complete |
-| G2 | Blank numbered lines rejected in batch files | TPK source runs on revived DTSS | TOLERATED→STRICT | P1 — small change |
+| G2 | Batch loader should replay terminal-entry semantics: bare line number = deletion (no-op if absent), not an error. *Corrected from "accept blank lines": DTSS never stored them — entry deletes.* | TPK spacer lines are no-op deletions on revived DTSS; Appendix A tape replay model | STRICT | P1 — small change |
 | G3 | Adopt TPK as Tier-A fixture with chrome-mask diff | project-tpk transcript | validation | P2 (after G2) |
 | G4 | Formalize `tests/fixtures/manual/` page-cited corpus | cpp-tutor corpus shape; our hand-verified examples | validation | P2 |
 | G5 | Vet & admit Alcock MAT/numeric programs (excl. `PRINT USING`) | Illustrating-BASIC | validation | P3 |

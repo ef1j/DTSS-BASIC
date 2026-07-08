@@ -333,11 +333,17 @@ Every intentional departure from the 1968 manual, and why:
     `FOR X = S TO P9` crunched to `FORX=STOP9` reads `STOP` — an
     ambiguity inherent to space-free source that period compilers faced
     too. No program in the bundled corpus is affected by any edge.
-17. **Known gap — blank numbered lines.** A line number followed by
-    nothing is accepted by real DTSS in stored programs (witnessed by the
-    revived-DTSS TPK transcript in `timereshared/project-tpk`) but is
-    currently rejected here in batch files (interactively, a bare number
-    deletes the line, as on DTSS). Scheduled fix (item G2).
+17. **Known gap — bare line numbers in program files.** DTSS never stored
+    blank numbered lines: all input arrived through terminal line entry
+    (paper tape included, replayed as if typed), where a bare line number
+    is a *deletion* command — a no-op if the line does not exist. Program
+    files containing spacer lines like `110` (e.g. the TPK source in
+    `timereshared/project-tpk`, which runs on the revived DTSS precisely
+    because those lines delete nothing) therefore loaded fine. This
+    interpreter's batch loader currently rejects such lines instead of
+    applying the deletion semantics; the fix is to make batch loading a
+    faithful replay of terminal entry (plan item G2, as corrected).
+    Interactively, a bare number already deletes the line, as on DTSS.
 
 ## Repository layout
 
