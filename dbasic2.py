@@ -1427,8 +1427,6 @@ class Interp:
                     i = self.prog.index[r[1]] + 1
         except StopRun:
             pass
-        if self.printer.col > 0:
-            self.printer.newline()
         self.printer.flush()
 
     def exec_stmt(self, s, line):
@@ -1984,7 +1982,10 @@ def run_batch(path):
         return 2
     try:
         prog = Program(load_program_text(text))
-        Interp(prog, sys.stdin, sys.stdout).run()
+        interp = Interp(prog, sys.stdin, sys.stdout)
+        interp.run()
+        if interp.printer.col > 0:      # complete a partial final line
+            interp.printer.newline()
         return 0
     except BasicError as e:
         sys.stdout.flush()
@@ -2044,8 +2045,10 @@ class Repl:
         prog = Program(dict(self.lines))
         print()
         # the RUN header starts one space in (manual pp. 10, 24, 27, 60)
+        # and is followed by two blank lines (pp. 42-45, 60, 62)
         print(" %-9s%s      %s" % (self.name, time.strftime('%H:%M'),
                                    time.strftime('%m/%d/%y')))
+        print()
         print()
         t0 = _cpu_time()
         interp = Interp(prog, sys.stdin, sys.stdout, interactive=True)
@@ -2055,8 +2058,15 @@ class Repl:
             if interp.printer.col > 0:
                 interp.printer.newline()
             print("STOPPED AT USER REQUEST")
-        print()
+        # one carriage return before TIME, unconditionally: a partial
+        # final line is completed (pp. 44-45: TIME sits directly under
+        # ;-packed output), a completed one yields a blank line (p. 43)
+        if interp.printer.col > 0:
+            interp.printer.newline()
+        else:
+            print()
         print("TIME:  %.2f SECS." % (_cpu_time() - t0))
+        print()                          # LF after TIME (pp. 43, 45)
 
     def cmd_list(self, args, heading=True):
         if not self.lines:
@@ -2072,6 +2082,9 @@ class Repl:
                 hi = int(m.group(2)) if m.group(2) else MAX_LINENO
             elif m.group(1):
                 hi = MAX_LINENO if '-' in args else MAX_LINENO
+        # one blank line after the LIST command, one after the heading,
+        # and two before the READY that follows (manual p. 32)
+        print()
         if heading:
             print("%-9s%s      %s" % (self.name, time.strftime('%H:%M'),
                                       time.strftime('%m/%d/%y')))
@@ -2079,6 +2092,8 @@ class Repl:
         for n in sorted(self.lines):
             if lo <= n <= hi:
                 print("%d %s" % (n, self.lines[n]))
+        print()
+        print()
 
     def cmd_save(self, replace=False):
         if not os.path.isdir(self.libdir):

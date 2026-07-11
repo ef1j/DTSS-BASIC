@@ -1059,6 +1059,53 @@ class Python2Fork(unittest.TestCase):
                          'python2 fork and python3 primary outputs differ')
 
 
+class InteractiveSpacing(unittest.TestCase):
+    """Vertical spacing of the session, per the manual's transcripts
+    (pp. 32, 42-45): blank line then header then two blanks after RUN;
+    one unconditional carriage return before TIME (blank line if the
+    program ended at column 0, none if it ended mid-line); blank line
+    after TIME; LIST = blank, heading, blank, lines, two blanks."""
+
+    def session(self, text):
+        p = subprocess.run([sys.executable, DBASIC], input=text,
+                           capture_output=True, text=True, timeout=30)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        return p.stdout.splitlines()
+
+    def test_run_spacing_program_ends_at_column_zero(self):
+        lines = self.session('NEW TEST\n10 PRINT "HI"\n20 END\nRUN\nBYE\n')
+        i = next(n for n, l in enumerate(lines) if l.startswith(' TEST'))
+        self.assertEqual(lines[i - 1], '')          # blank after RUN
+        self.assertEqual(lines[i + 1], '')          # two blanks
+        self.assertEqual(lines[i + 2], '')          #   after header
+        self.assertEqual(lines[i + 3], 'HI')
+        self.assertEqual(lines[i + 4], '')          # CR at col 0 -> blank
+        self.assertTrue(lines[i + 5].startswith('TIME:'))
+        self.assertEqual(lines[i + 6], '')          # LF after TIME
+        self.assertEqual(lines[i + 7], 'READY')
+
+    def test_run_spacing_program_ends_mid_line(self):
+        # trailing ';' leaves a partial line: the carriage return
+        # completes it, so TIME sits directly beneath (pp. 44-45)
+        lines = self.session('NEW TEST\n10 PRINT "AB";\n20 END\nRUN\nBYE\n')
+        i = next(n for n, l in enumerate(lines) if l.startswith(' TEST'))
+        self.assertEqual(lines[i + 3], 'AB')
+        self.assertTrue(lines[i + 4].startswith('TIME:'),
+                        'TIME should directly follow a completed line')
+
+    def test_list_spacing(self):
+        lines = self.session(
+            'NEW TEST\n10 PRINT "HI"\n20 END\nLIST\nBYE\n')
+        i = next(n for n, l in enumerate(lines) if l.startswith('TEST'))
+        self.assertEqual(lines[i - 1], '')          # blank after LIST
+        self.assertEqual(lines[i + 1], '')          # blank after heading
+        self.assertEqual(lines[i + 2], '10 PRINT "HI"')
+        self.assertEqual(lines[i + 3], '20 END')
+        self.assertEqual(lines[i + 4], '')          # two blanks
+        self.assertEqual(lines[i + 5], '')          #   before READY
+        self.assertEqual(lines[i + 6], 'READY')
+
+
 class InteractiveSmoke(unittest.TestCase):
     def test_empty_workspace_list_is_silent_and_run_reports_no_end(self):
         session = 'LIST\nNEW TEST\nLIST\nRUN\nBYE\n'

@@ -309,6 +309,11 @@ Every intentional departure from the 1968 manual, and why:
     overwrite an existing file (use `REPLACE`, as on DTSS); `LIST` prints a
     DTSS-style heading (name, time, date) and `RUN` a header and a
     `TIME: … SECS.` footer (CPU time, as DTSS reported compute time).
+    Session vertical spacing follows the manual's transcripts (pp. 32,
+    42–45): RUN → blank, header (one space in), two blanks, output; one
+    unconditional carriage return before `TIME:` (so a blank line appears
+    only when the program ended at column 0); a blank after `TIME:`;
+    LIST → blank, heading, blank, listing, two blanks.
     `LIST` on an empty workspace prints nothing; `RUN` on an empty
     workspace reports `NO END INSTRUCTION`. Unknown commands answer
     `WHAT?`.
