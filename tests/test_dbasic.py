@@ -1082,6 +1082,10 @@ class InteractiveSmoke(unittest.TestCase):
         self.assertEqual(p.returncode, 0, p.stderr)
         self.assertIn('READY', p.stdout)
         self.assertIn('HI', p.stdout)
+        # the RUN header starts one space in (manual pp. 10, 24, 27, 60)
+        import re
+        self.assertTrue(re.search(r'\n TEST\s+\d\d:\d\d', p.stdout),
+                        'RUN header should begin with one space')
 
 
 if __name__ == '__main__':

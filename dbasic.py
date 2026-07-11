@@ -2020,8 +2020,9 @@ class Repl:
     def cmd_run(self):
         prog = Program(dict(self.lines))
         print()
-        print("%-9s%s      %s" % (self.name, time.strftime('%H:%M'),
-                                  time.strftime('%m/%d/%y')))
+        # the RUN header starts one space in (manual pp. 10, 24, 27, 60)
+        print(" %-9s%s      %s" % (self.name, time.strftime('%H:%M'),
+                                   time.strftime('%m/%d/%y')))
         print()
         t0 = time.process_time()
         interp = Interp(prog, sys.stdin, sys.stdout, interactive=True)
