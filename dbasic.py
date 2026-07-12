@@ -599,10 +599,18 @@ def parse_statement(text, line):
             if pk == 'op' and pv == ':':
                 raise BasicError("ONLY ONE STATEMENT ALLOWED PER LINE", line)
             # adjacent items without a separator (e.g. PRINT "GAIN OF " Y)
-            # are packed as if separated by ';' -- see DEVIATIONS
+            # are packed as if separated by ';' (manual sec. 1.7.3 (c))
             if entries and entries[-1][0] == 'item':
                 entries.append(('sep', ';'))
-            entries.append(('item', p.expression()))
+            ik, iv = p.peek()
+            if ik == 'str':
+                # a quoted label is an item by itself; it never joins a
+                # formula, so PRINT "LOSS OF " -Y is the label followed
+                # by the value of -Y (FTBALL line 1420)
+                p.next()
+                entries.append(('item', ('str', iv)))
+            else:
+                entries.append(('item', p.expression()))
         return ('PRINT', entries)
 
     if v in ('GOTO', 'GO'):

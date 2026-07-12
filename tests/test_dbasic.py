@@ -129,6 +129,14 @@ class T3Print(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(out, ' ' * 5 + 'X\n')
 
+    def test_label_followed_by_negated_expression(self):
+        # a quoted label is an item, never a formula operand: the '-'
+        # after it begins the next item (FTBALL line 1420)
+        src = '10 LET Y = -5\n20 PRINT "LOSS OF " -Y; "YARDS"\n30 END\n'
+        out, err, rc = run_src(src)
+        self.assertEqual(rc, 0, err)
+        self.assertEqual(out, 'LOSS OF  5 YARDS\n')
+
     def test_fifth_zone_comma_wraps(self):
         out, _, rc = run_src('10 PRINT 1,2,3,4,5,6\n20 END\n')
         self.assertEqual(rc, 0)
@@ -981,6 +989,15 @@ class T4FtballSmoke(unittest.TestCase):
         self.assertNotIn('Traceback', err)
         # either the game ended (0) or the canned input ran out (1)
         self.assertIn(rc, (0, 1))
+
+    def test_ftball_loss_path(self):
+        # deterministic RNG: toss 57 then play 4 reaches line 1420
+        # (PRINT "LOSS OF " -Y; "YARDS"), once a parser crash
+        out, err, rc = run_file(os.path.join(LIBRARY, 'FTBALL'),
+                                stdin='57\n4\n', timeout=60)
+        self.assertIn('PASSER TACKLED.   LOSS OF', out)
+        self.assertNotIn('MISMATCHED', err)
+        self.assertNotIn('Traceback', err)
 
 
 DBASIC2 = os.path.join(ROOT, 'dbasic2.py')
