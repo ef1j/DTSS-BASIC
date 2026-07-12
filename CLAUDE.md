@@ -42,7 +42,12 @@ so it fails loudly if dbasic.py drifts from its expectations; update the list
 when adding py3-only constructs). The `Python2Fork` tests enforce
 byte-identical output under Python 3 always, and under `python2` when
 available. Avoid py3-only syntax (no f-strings in either file; `%`-formatting
-is the house style).
+is the house style). **Py2 semantic traps to avoid in shared code:**
+`math.floor` returns a *float* on Python 2 — wrap in `int()` whenever the
+result feeds `round(x, n)`, a `%.*f` width, an index, or a slice; `/` between
+ints is floor division there (the fork's `from __future__ import division`
+handles this, but don't rely on int/int `/` anyway); `round()` half-ties
+differ (use `iround`).
 
 ## Architecture
 

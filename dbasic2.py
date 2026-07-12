@@ -919,7 +919,7 @@ def _fmt_e(a):
     The space before the E matches the manual's teletype sample outputs
     (e.g. "5.00548 E-2", "1.34218 E+8" in sec. 2.1/2.2).
     """
-    e = math.floor(math.log10(a))
+    e = int(math.floor(math.log10(a)))   # int(): Py2 floor() is a float
     m = a / (10.0 ** e)
     m = round(m, 5)
     if m >= 10.0:
@@ -940,10 +940,10 @@ def fmt_mag(a):
             return str(i)
         return _fmt_e(a)
     # Rule 2: at most six significant digits.
-    e = math.floor(math.log10(a))
+    e = int(math.floor(math.log10(a)))   # int(): Py2 floor() is a float
     r = round(a, 5 - e)
     if r != 0:
-        e = math.floor(math.log10(r))     # rounding may bump the exponent
+        e = int(math.floor(math.log10(r)))   # rounding may bump the exponent
     if r == int(r) and r >= 1:
         i = int(r)
         if len(str(i)) <= 8:
